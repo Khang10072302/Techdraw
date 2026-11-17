@@ -76,7 +76,8 @@ input,select{font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6
    <label>Tên hình<input id="qn"></label>
    <label>Hướng nhìn<select id="qd"></select></label>
    <label>Tỷ lệ<select id="qs"></select></label>
-   <div><button class="alt" id="qr">Xoay 90°</button><button class="alt" id="qx">Xoá hình</button></div>
+   <label>Kiểu hiển thị<select id="qm"><option value="solid">Solid (ẩn nét khuất)</option><option value="hid">Solid + nét khuất</option><option value="wire">Wireframe</option></select></label>
+   <div><button class="alt" id="qr">Xoay 90°</button><button class="alt" id="qx">Xoá hình</button><button class="alt" id="qc">Tạo mặt cắt</button><button class="alt" id="qf2">Đảo hướng cắt</button></div>
   </div>
   <div id="qlist" style="font-size:13px;margin-top:6px"></div>
  </div>
@@ -123,13 +124,13 @@ async function parse3MF(buf){
  return Float64Array.from(out,v=>v*unit);}
 
 function setMesh(T,name){
- const n=T.length/9,ids=new Map(),P=[],E=new Map(),N=new Float64Array(n*3),q=1e3;
+ const n=T.length/9,ids=new Map(),P=[],E=new Map(),N=new Float64Array(n*3),F=new Int32Array(n*3),q=1e3;
  const vid=(x,y,z)=>{const k=Math.round(x*q)+','+Math.round(y*q)+','+Math.round(z*q);let i=ids.get(k);if(i===undefined){i=P.length/3;ids.set(k,i);P.push(x,y,z);}return i;};
- for(let f=0;f<n;f++){const o=f*9,a=vid(T[o],T[o+1],T[o+2]),b=vid(T[o+3],T[o+4],T[o+5]),c=vid(T[o+6],T[o+7],T[o+8]);
+ for(let f=0;f<n;f++){const o=f*9,a=vid(T[o],T[o+1],T[o+2]),b=vid(T[o+3],T[o+4],T[o+5]),c=vid(T[o+6],T[o+7],T[o+8]);F[f*3]=a;F[f*3+1]=b;F[f*3+2]=c;
   const ux=T[o+3]-T[o],uy=T[o+4]-T[o+1],uz=T[o+5]-T[o+2],vx=T[o+6]-T[o],vy=T[o+7]-T[o+1],vz=T[o+8]-T[o+2];
   const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx,l=Math.hypot(nx,ny,nz)||1;N[f*3]=nx/l;N[f*3+1]=ny/l;N[f*3+2]=nz/l;
   for(const[p,r]of[[a,b],[b,c],[c,a]]){if(p===r)continue;const k=p<r?p+'_'+r:r+'_'+p;let e=E.get(k);if(!e){e=[p,r,[]];E.set(k,e);}e[2].push(f);}}
- Object.assign(st,{T,P0:P,E:[...E.values()],N,adj:null,views:[],dims:[],sel:null,pickN:null,tmp:null});
+ Object.assign(st,{T,F,P0:P,E:[...E.values()],N,adj:null,views:[],dims:[],sel:null,pickN:null,tmp:null});
  $('title').value=name.replace(/\.[^.]+$/,'');$('pk').textContent='Chưa chọn mặt nào.';$('addface').disabled=true;
  build3d();geom();addStd();panel();
  msg(`Đã tải ${name}: ${n.toLocaleString()} tam giác.`);}
@@ -141,7 +142,8 @@ function geom(){
  for(let i=0;i<n;i++){let x=P[i*3],y=P[i*3+1],z=P[i*3+2];if(Y){const t=y;y=-z;z=t;}Pm[i*3]=x;Pm[i*3+1]=y;Pm[i*3+2]=z;
   for(let k=0;k<3;k++){const v=Pm[i*3+k];if(v<bb[k])bb[k]=v;if(v>bb[k+3])bb[k+3]=v;}}
  st.Pm=Pm;st.bb=bb;
- const cosT=Math.cos(+$('ang').value*Math.PI/180),N=st.N,seg=[];
+ const Nm=new Float64Array(st.N.length);for(let i=0;i<Nm.length;i+=3){const x=st.N[i],y=st.N[i+1],z=st.N[i+2];Nm[i]=x;Nm[i+1]=Y?-z:y;Nm[i+2]=Y?y:z;}st.Nm=Nm;
+ const cosT=Math.cos(+$('ang').value*Math.PI/180),N=st.N,seg=[];st.cosT=cosT;
  for(const[p,r,fs]of st.E){let f=fs.length!==2;if(!f){const a=fs[0]*3,b=fs[1]*3;f=N[a]*N[b]+N[a+1]*N[b+1]+N[a+2]*N[b+2]<cosT;}if(f)seg.push(p,r);}
  st.seg=seg;st.views.forEach(calc);}
 function basis(v){
@@ -154,13 +156,65 @@ function calc(v){
  basis(v);const bb=st.bb;let a=[1e12,-1e12,1e12,-1e12];
  for(let i=0;i<8;i++){const q=pj(v,bb[i&1?3:0],bb[i&2?4:1],bb[i&4?5:2]);a=[Math.min(a[0],q[0]),Math.max(a[1],q[0]),Math.min(a[2],q[1]),Math.max(a[3],q[1])];}
  v.e=a;v.um=(a[0]+a[1])/2;v.vm=(a[2]+a[3])/2;
- const Pm=st.Pm,n=Pm.length/3,Q=new Float64Array(n*2),s=v.s,A=[];
- for(let i=0;i<n;i++){const q=pj(v,Pm[i*3],Pm[i*3+1],Pm[i*3+2]);Q[i*2]=q[0];Q[i*2+1]=q[1];}
- const sg=st.seg;
- for(let i=0;i<sg.length;i+=2){const p=sg[i]*2,r=sg[i+1]*2,x1=(Q[p]-v.um)*s,y1=-(Q[p+1]-v.vm)*s,x2=(Q[r]-v.um)*s,y2=-(Q[r+1]-v.vm)*s;
-  if(Math.abs(x1-x2)+Math.abs(y1-y2)<.02)continue;A.push(`M${x1.toFixed(2)} ${y1.toFixed(2)}L${x2.toFixed(2)} ${y2.toFixed(2)}`);}
- v.d=A.join('');v.Q=Q;}
-function mk(n,name){const v={id:st.nid++,name,n,rot:0,s:1,x:0,y:0};st.views.push(v);calc(v);st.sel=v.id;return v;}
+ const Pm=st.Pm,n=Pm.length/3,Q=new Float64Array(n*2),Wd=new Float64Array(n),L=Math.hypot(...v.n),nv=v.n.map(x=>x/L),s=v.s,Nm=st.Nm,F=st.F,sec=v.sec,w0=sec?(sec.flip?-sec.d0:sec.d0):1e30;
+ let wmin=1e12,wmax=-1e12;
+ for(let i=0;i<n;i++){const x=Pm[i*3],y=Pm[i*3+1],z=Pm[i*3+2],q=pj(v,x,y,z),w=x*nv[0]+y*nv[1]+z*nv[2];Q[i*2]=q[0];Q[i*2+1]=q[1];Wd[i]=w;if(w<wmin)wmin=w;if(w>wmax)wmax=w;}
+ v.Q=Q;
+ const ps=Math.max(a[1]-a[0],a[3]-a[2])/1200||1,gw=Math.ceil((a[1]-a[0])/ps)+3,gh=Math.ceil((a[3]-a[2])/ps)+3;
+ const px=i=>(Q[i*2]-a[0])/ps+1,py=i=>(a[3]-Q[i*2+1])/ps+1;
+ const X=u=>((u-v.um)*s).toFixed(2),Y=w=>(-(w-v.vm)*s).toFixed(2);
+ /* cạnh: cạnh đặc trưng + cạnh biên (silhouette) theo hướng nhìn */
+ const sg=st.seg.slice();
+ for(const[p,r,fs]of st.E){if(fs.length!==2)continue;const A=fs[0]*3,B=fs[1]*3,
+  d1=Nm[A]*nv[0]+Nm[A+1]*nv[1]+Nm[A+2]*nv[2],d2=Nm[B]*nv[0]+Nm[B+1]*nv[1]+Nm[B+2]*nv[2];
+  if(d1*d2<-1e-12&&Nm[A]*Nm[B]+Nm[A+1]*Nm[B+1]+Nm[A+2]*Nm[B+2]>=st.cosT)sg.push(p,r);}
+ /* đường viền mặt cắt */
+ const cs=[];
+ if(sec)for(let f=0;f<F.length;f+=3){
+  const ia=F[f],ib=F[f+1],ic=F[f+2],d=[Wd[ia]-w0||1e-7,Wd[ib]-w0||1e-7,Wd[ic]-w0||1e-7],id=[ia,ib,ic];
+  if((d[0]>0)===(d[1]>0)&&(d[1]>0)===(d[2]>0))continue;
+  const pts=[];
+  for(let k=0;k<3;k++){const k2=(k+1)%3;if((d[k]>0)!==(d[k2]>0)){const t=d[k]/(d[k]-d[k2]),p=id[k],r=id[k2];pts.push(Q[p*2]+(Q[r*2]-Q[p*2])*t,Q[p*2+1]+(Q[r*2+1]-Q[p*2+1])*t);}}
+  if(pts.length===4)cs.push(pts);}
+ /* z-buffer (solid) */
+ let Z=null;
+ if(v.mode!=='wire'){
+  Z=new Float32Array(gw*gh).fill(-1e30);
+  for(let f=0;f<F.length;f+=3){
+   const ia=F[f],ib=F[f+1],ic=F[f+2],x0=px(ia),y0=py(ia),x1=px(ib),y1=py(ib),x2=px(ic),y2=py(ic),den=(y1-y2)*(x0-x2)+(x2-x1)*(y0-y2);
+   if(Math.abs(den)<1e-9)continue;
+   const za=Wd[ia],zb=Wd[ib],zc=Wd[ic],mx=Math.max(0,Math.floor(Math.min(x0,x1,x2))),Mx=Math.min(gw-1,Math.ceil(Math.max(x0,x1,x2))),my=Math.max(0,Math.floor(Math.min(y0,y1,y2))),My=Math.min(gh-1,Math.ceil(Math.max(y0,y1,y2)));
+   for(let y=my;y<=My;y++)for(let x=mx;x<=Mx;x++){
+    const XX=x+.5,YY=y+.5,l0=((y1-y2)*(XX-x2)+(x2-x1)*(YY-y2))/den,l1=((y2-y0)*(XX-x2)+(x0-x2)*(YY-y2))/den,l2=1-l0-l1;
+    if(l0<-.01||l1<-.01||l2<-.01)continue;
+    const z=l0*za+l1*zb+l2*zc;if(z>w0)continue;const k=y*gw+x;if(z>Z[k])Z[k]=z;}}
+  if(sec){const rows=Array.from({length:gh},()=>[]);
+   for(const g of cs){const x1=(g[0]-a[0])/ps+1,y1=(a[3]-g[1])/ps+1,x2=(g[2]-a[0])/ps+1,y2=(a[3]-g[3])/ps+1;if(y1===y2)continue;
+    for(let y=Math.max(0,Math.ceil(Math.min(y1,y2)-.5));y<=Math.min(gh-1,Math.floor(Math.max(y1,y2)-.5));y++)rows[y].push(x1+(x2-x1)*((y+.5-y1)/(y2-y1)));}
+   rows.forEach((r,y)=>{r.sort((p,q)=>p-q);for(let k=0;k+1<r.length;k+=2)for(let x=Math.max(0,Math.ceil(r[k]-.5));x<=Math.min(gw-1,Math.floor(r[k+1]-.5));x++){const i=y*gw+x;if(Z[i]<w0)Z[i]=w0;}});}
+ }
+ /* tách đoạn nhìn thấy / bị khuất */
+ const tol=(wmax-wmin)*.004+ps*2,vis=[],hid=[];
+ const put=(o,p,r,t1,t2)=>{if(t2<=t1)return;const qx=Q[p*2],qy=Q[p*2+1],dx=Q[r*2]-qx,dy=Q[r*2+1]-qy;o.push(`M${X(qx+dx*t1)} ${Y(qy+dy*t1)}L${X(qx+dx*t2)} ${Y(qy+dy*t2)}`);};
+ for(let i=0;i<sg.length;i+=2){
+  const p=sg[i],r=sg[i+1],ax=px(p),ay=py(p),bx=px(r),by=py(r),az=Wd[p],bz=Wd[r],nn=Math.max(1,Math.ceil(Math.hypot(bx-ax,by-ay)));
+  let rs=-1,rh=-1;
+  for(let k=0;k<=nn;k++){
+   const t=k/nn,z=az+(bz-az)*t;let ok=false,hd=false;
+   if(z<=w0+tol){if(!Z)ok=true;else{const ix=Math.min(gw-1,Math.max(0,(ax+(bx-ax)*t)|0)),iy=Math.min(gh-1,Math.max(0,(ay+(by-ay)*t)|0));if(z>=Z[iy*gw+ix]-tol)ok=true;else hd=true;}}
+   if(ok){if(rs<0)rs=k;}else if(rs>=0){put(vis,p,r,rs/nn,(k-1)/nn);rs=-1;}
+   if(hd){if(rh<0)rh=k;}else if(rh>=0){put(hid,p,r,rh/nn,(k-1)/nn);rh=-1;}}
+  if(rs>=0)put(vis,p,r,rs/nn,1);if(rh>=0)put(hid,p,r,rh/nn,1);}
+ for(const g of cs)vis.push(`M${X(g[0])} ${Y(g[1])}L${X(g[2])} ${Y(g[3])}`);
+ /* gạch mặt cắt 45° */
+ const H=[];
+ if(sec&&cs.length){const hs=2.2/s;
+  for(let k=Math.floor((a[0]-a[3])/hs);k<=Math.ceil((a[1]-a[2])/hs);k++){const c=k*hs,xs=[];
+   for(const g of cs){const fa=g[0]-g[1]-c,fb=g[2]-g[3]-c;if((fa>0)!==(fb>0)){const t=fa/(fa-fb);xs.push(g[0]+(g[2]-g[0])*t+g[1]+(g[3]-g[1])*t);}}
+   xs.sort((p,q)=>p-q);
+   for(let j=0;j+1<xs.length;j+=2)H.push(`M${X((xs[j]+c)/2)} ${Y((xs[j]-c)/2)}L${X((xs[j+1]+c)/2)} ${Y((xs[j+1]-c)/2)}`);}}
+ v.d=vis.join('');v.dh=v.mode==='hid'?hid.join(''):'';v.h=H.join('');}
+function mk(n,name,ex){const v=Object.assign({id:st.nid++,name,n,rot:0,s:1,x:0,y:0,mode:'solid'},ex);st.views.push(v);calc(v);st.sel=v.id;return v;}
 function addStd(){st.views=[];st.dims=[];st.sel=null;for(const k of['Trên','Iso','Trước','Phải'])mk(DIR[k],k);st.sel=null;arrange();}
 function arrange(){
  const n=st.views.length;if(!n)return;const[W,H]=sz(),x0=32,y0=24,aw=W-x0-20,ah=H-y0-44,cols=n>1?2:1,rows=Math.ceil(n/cols),cw=aw/cols,ch=ah/rows;
@@ -182,8 +236,9 @@ function sheetSvg(ui){
  const[W,H]=sz(),Mg=10,g=id=>$(id).value;let body='';
  for(const v of st.views){
   const w=(v.e[1]-v.e[0])*v.s,h=(v.e[3]-v.e[2])*v.s;
-  let i=`<path d="${v.d}" fill="none" stroke="#111" stroke-width="${g('lw')}" stroke-linecap="round" stroke-linejoin="round"/><text y="${fm(-h/2-3)}" text-anchor="middle" font-size="3" fill="#111">${esc(v.name)} · ${lbl(v.s)}</text>`;
+  let i=`<path d="${v.dh||''}" fill="none" stroke="#555" stroke-width=".18" stroke-dasharray="1.6 1"/><path d="${v.h||''}" fill="none" stroke="#111" stroke-width=".18"/><path d="${v.d}" fill="none" stroke="#111" stroke-width="${g('lw')}" stroke-linecap="round" stroke-linejoin="round"/><text y="${fm(-h/2-3)}" text-anchor="middle" font-size="3" fill="#111">${esc(v.name)} · ${lbl(v.s)}</text>`;
   const ds=st.dims.filter(m=>m.v===v.id);
+  for(const c of st.views)if(c.sec&&c.sec.pv===v.id)i+=secSvg(c,v);
   if(ds.length)i+=`<g fill="none" stroke="#111" stroke-width=".2" font-size="3.2">${ds.map(m=>dimSvg(m,v)).join('')}</g>`;
   if(ui)i=`<rect x="${fm(-w/2-4)}" y="${fm(-h/2-6)}" width="${fm(w+8)}" height="${fm(h+12)}" fill="#fff" fill-opacity="0"${v.id===st.sel?' stroke="#2a5bd7" stroke-width=".4" stroke-dasharray="2 1.5"':''}/>`+i;
   body+=`<g data-v="${v.id}" transform="translate(${v.x} ${v.y})"${ui?' style="cursor:move"':''}>${i}</g>`;}
@@ -207,6 +262,7 @@ function dimClick(v,p){
 paper.addEventListener('pointerdown',e=>{
  const g=e.target.closest('[data-v]');if(!g)return;const v=st.views.find(x=>x.id===+g.dataset.v),p=pt(e);
  if(st.mode==='dim'){dimClick(v,p);return;}
+ if(st.mode==='sec'){secClick(v,p);return;}
  st.sel=v.id;draw();panel();paper.setPointerCapture(e.pointerId);
  st.drag={v,g:paper.querySelector(`[data-v="${v.id}"]`),p,x:v.x,y:v.y};});
 paper.addEventListener('pointermove',e=>{const d=st.drag;if(!d)return;const p=pt(e);
@@ -216,7 +272,7 @@ function panel(){
  const v=cur();$('qf').style.display=v?'grid':'none';
  $('qh').textContent=v?'Đang chỉnh: '+v.name:'Bấm vào một hình trên giấy để chỉnh sửa. Kéo hình để di chuyển.';
  if(!v){$('qlist').innerHTML='';return;}
- $('qn').value=v.name;$('qs').value=v.s;const nl=Math.hypot(...v.n);
+ $('qn').value=v.name;$('qs').value=v.s;$('qm').value=v.mode;$('qf2').style.display=v.sec?'':'none';$('qd').parentNode.style.display=v.sec?'none':'';const nl=Math.hypot(...v.n);
  $('qd').value=Object.keys(DIR).find(k=>{const d=DIR[k],dl=Math.hypot(...d);return d.every((a,i)=>Math.abs(a/dl-v.n[i]/nl)<1e-3);})||'';
  const ds=st.dims.filter(m=>m.v===v.id);
  $('qlist').innerHTML=ds.length?'Số đo: '+ds.map(m=>`<button class="alt" data-del="${m.id}">${{h:'Ngang',v:'Dọc',a:'Nghiêng'}[m.k]} ${fm(m.k==='h'?Math.abs(m.b[0]-m.a[0]):m.k==='v'?Math.abs(m.b[1]-m.a[1]):Math.hypot(m.b[0]-m.a[0],m.b[1]-m.a[1]))} ✕</button>`).join(''):'';}
@@ -227,13 +283,41 @@ $('qs').onchange=e=>{const v=cur();if(v){v.s=+e.target.value;calc(v);draw();}};
 $('qr').onclick=()=>{const v=cur();if(v){v.rot=(v.rot+1)%4;clr(v);calc(v);draw();panel();}};
 $('qx').onclick=()=>{const v=cur();if(v){clr(v);st.views=st.views.filter(x=>x!==v);st.sel=null;draw();panel();}};
 $('qlist').onclick=e=>{const b=e.target.closest('[data-del]');if(b){st.dims=st.dims.filter(m=>m.id!==+b.dataset.del);draw();panel();}};
-$('dm').onclick=()=>{st.mode=st.mode?null:'dim';st.tmp=null;$('dm').classList.toggle('alt',!st.mode);paper.style.cursor=st.mode?'crosshair':'';msg(st.mode?'Chế độ số đo: bấm hai đỉnh trên cùng một hình (tự bắt điểm gần nhất).':'');};
+$('dm').onclick=()=>setMode(st.mode==='dim'?null:'dim');
 $('arr').onclick=arrange;$('std').onclick=()=>{if(st.P0)addStd();};
 $('addface').onclick=()=>{if(!st.pickN)return;const v=mk(st.pickN,'Hình '+(st.views.length+1));
  if(st.views.length===1)arrange();else{const[W,H]=sz();v.s=st.views[0].s;calc(v);v.x=W/2;v.y=H/2-10;draw();panel();}};
 ['sheet'].forEach(i=>$(i).onchange=arrange);
-$('up').onchange=()=>{build3d();geom();draw();};$('ang').oninput=()=>{geom();draw();};
+$('up').onchange=()=>{st.views=st.views.filter(v=>!v.sec);build3d();geom();draw();panel();};let tmr;$('ang').oninput=()=>{$('angv').textContent=$('ang').value;clearTimeout(tmr);tmr=setTimeout(()=>{geom();draw();},150);};
 ['lw','title','mat','by','date'].forEach(i=>$(i).oninput=draw);
+
+/* ---------- mặt cắt ---------- */
+function setMode(m){st.mode=m;st.tmp=null;$('dm').classList.toggle('alt',m!=='dim');$('qc').classList.toggle('alt',m!=='sec');paper.style.cursor=m?'crosshair':'';
+ msg(m==='dim'?'Chế độ số đo: bấm hai đỉnh trên cùng một hình (tự bắt điểm gần nhất).':m==='sec'?'Chế độ mặt cắt: bấm hai điểm trên một hình để vẽ đường cắt.':'');}
+function secClick(v,p){
+ const a=snap(v,(p.x-v.x)/v.s+v.um,-(p.y-v.y)/v.s+v.vm);
+ if(!st.tmp||st.tmp.v!==v.id){st.tmp={v:v.id,a};msg('Đã chọn điểm 1 của đường cắt — bấm điểm thứ hai.');return;}
+ const A=st.tmp.a,B=a.slice();
+ if(Math.abs(B[0]-A[0])<.03*Math.abs(B[1]-A[1]))B[0]=A[0];if(Math.abs(B[1]-A[1])<.03*Math.abs(B[0]-A[0]))B[1]=A[1];
+ setMode(null);mkSec(v,A,B);}
+function mkSec(P,A2,B2){
+ const{r,u,c,s}=P.B,un=q=>[q[0]*c+q[1]*s,-q[0]*s+q[1]*c],a=un(A2),b=un(B2),L0=Math.hypot(...P.n),f=P.n.map(x=>-x/L0);
+ const d3=[0,1,2].map(i=>(b[0]-a[0])*r[i]+(b[1]-a[1])*u[i]);
+ let p=[d3[1]*f[2]-d3[2]*f[1],d3[2]*f[0]-d3[0]*f[2],d3[0]*f[1]-d3[1]*f[0]];const L=Math.hypot(...p);
+ if(L<1e-9){msg('Hai điểm trùng nhau.');return;}
+ p=p.map(x=>x/L);const A3=[0,1,2].map(i=>a[0]*r[i]+a[1]*u[i]),B3=[0,1,2].map(i=>b[0]*r[i]+b[1]*u[i]);
+ const lab=String.fromCharCode(65+st.views.filter(x=>x.sec).length%26);
+ const v=mk(p,`Mặt cắt ${lab}-${lab}`,{s:P.s,sec:{pv:P.id,A3,B3,p,d0:p[0]*A3[0]+p[1]*A3[1]+p[2]*A3[2],flip:false,label:lab}});
+ const[W]=sz();v.x=Math.min(W-50,P.x+(P.e[1]-P.e[0])*P.s/2+(v.e[1]-v.e[0])*v.s/2+25);v.y=P.y;draw();panel();
+ msg('Đã tạo '+v.name+'. Bấm “Đảo hướng cắt” nếu muốn xem phía bên kia.');}
+function secSvg(c,v){
+ const s=v.s,pq=q=>{const o=pj(v,q[0],q[1],q[2]);return[(o[0]-v.um)*s,-(o[1]-v.vm)*s];},A=pq(c.sec.A3),B=pq(c.sec.B3),L=Math.hypot(...c.n),o=pj(v,-c.n[0]/L,-c.n[1]/L,-c.n[2]/L);
+ let dx=o[0],dy=-o[1];const m=Math.hypot(dx,dy)||1;dx/=m;dy/=m;
+ const ar=P=>`<path d="M${fm(P[0])} ${fm(P[1])}l${fm(dx*7)} ${fm(dy*7)}" marker-end="url(#ar)"/><text x="${fm(P[0]+dx*10)}" y="${fm(P[1]+dy*10+1.4)}" text-anchor="middle" font-size="4" fill="#111" stroke="none">${c.sec.label}</text>`;
+ return `<g fill="none" stroke="#111" stroke-width=".3"><path d="M${fm(A[0])} ${fm(A[1])}L${fm(B[0])} ${fm(B[1])}" stroke-dasharray="6 1.2 1 1.2"/>${ar(A)}${ar(B)}</g>`;}
+$('qc').onclick=()=>{if(!cur()){msg('Hãy chọn một hình trên giấy trước.');return;}setMode(st.mode==='sec'?null:'sec');};
+$('qm').onchange=e=>{const v=cur();if(v){v.mode=e.target.value;calc(v);draw();}};
+$('qf2').onclick=()=>{const v=cur();if(v&&v.sec){v.sec.flip=!v.sec.flip;v.n=v.n.map(x=>-x);clr(v);calc(v);draw();panel();}};
 
 /* ---------- xem trước, xuất ---------- */
 $('preview').onclick=()=>{if(!st.P0){msg('Hãy tải file hoặc bấm “Dùng mẫu” trước.');return;}
