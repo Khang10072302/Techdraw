@@ -20,10 +20,16 @@ label{display:flex;flex-direction:column;font-size:13px;gap:3px}
 input,select{font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg)}
 .checks{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:12px}
 .checks label{flex-direction:row;align-items:center;gap:5px}
-#sheet{background:#fff;border:1px solid var(--bd);border-radius:6px;overflow:auto}
-#sheet svg{display:block;width:100%;height:auto;min-width:640px}
+#paper{background:#fff;border:1px solid var(--bd);border-radius:6px;overflow:auto}
+#paper svg{display:block;width:100%;height:auto;min-width:640px}
+#pv{position:fixed;inset:0;z-index:50;background:#6b6b6b;display:none;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+#pv.show{display:flex}
+#pv .bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:var(--card);color:var(--fg)}
+#pv .bar span{flex:1;font-size:13px}
+#pvpaper{flex:1;overflow:auto;padding:16px;display:flex;justify-content:center;align-items:flex-start}
+#pvpaper svg{background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.5);width:100%;max-width:1100px;height:auto;display:block}
 #raw{width:100%;height:90px;display:none}
-@media print{body{background:#fff}main{padding:0;max-width:none}main>*:not(#sheet){display:none!important}#sheet{border:0;overflow:visible}#sheet svg{min-width:0}}
+@media print{html,body{background:#fff!important}main{display:none!important}#pv{position:static;display:block!important;background:#fff;padding:0}#pv .bar{display:none}#pvpaper{padding:0;overflow:visible;display:block}#pvpaper svg{box-shadow:none;max-width:none}}
 </style></head><body><main>
 <h1>TechDraw Web — bản vẽ kỹ thuật từ STL / 3MF</h1>
 <div id="drop">Kéo thả file STL / 3MF vào đây hoặc
@@ -48,9 +54,10 @@ input,select{font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6
 <label><input type="checkbox" id="v_iso" checked>Iso</label>
 <label><input type="checkbox" id="dims" checked>Kích thước</label>
 </div></div>
-<div><button id="print">In / Lưu PDF</button><button class="alt" id="copy">Sao chép SVG</button></div>
+<div><button id="preview">Xem trước &amp; xuất PDF</button><button class="alt" id="dl">Tải SVG</button><button class="alt" id="copy">Sao chép SVG</button></div>
 <textarea id="raw" readonly></textarea>
-<div id="sheet"></div>
+<div id="paper"></div></main>
+<div id="pv"><div class="bar"><span id="pvinfo"></span><button id="pdf">Xuất PDF</button><button class="alt" id="pvclose">Đóng</button></div><div id="pvpaper"></div></div>
 <script>
 const $=id=>document.getElementById(id);
 const SC=[5,2,1,.5,.2,.1,.05,.02,.01,.005];
@@ -137,9 +144,9 @@ function render(){
  const tx=W-Mg-110,ty=H-Mg-30,t=(x,y,s2,fs)=>`<text x="${tx+x}" y="${ty+y}"${fs?` font-size="${fs}"`:''}>${esc(s2)}</text>`;
  const tb=`<g fill="none" stroke="#111" stroke-width=".35"><rect x="${tx}" y="${ty}" width="110" height="30"/><path d="M${tx} ${ty+10}h110M${tx} ${ty+20}h110M${tx+55} ${ty+10}v20"/></g><g fill="#111" font-size="3.4">${t(3,7,g('title')||'Bản vẽ',5)}${t(3,16.5,'Vật liệu: '+g('mat'))}${t(58,16.5,'Tỷ lệ '+lbl(s)+' · mm')}${t(3,26.5,'Vẽ: '+g('by')+' · '+g('date'))}${t(58,26.5,'Khổ '+g('sheet')+' · Góc chiếu thứ '+mode)}</g>`;
  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}mm" height="${H}mm" font-family="Arial,Helvetica,sans-serif"><defs><marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerUnits="userSpaceOnUse" markerWidth="3" markerHeight="3" orient="auto-start-reverse"><path d="M0 1L10 5L0 9z" fill="#111" stroke="none"/></marker></defs><rect width="${W}" height="${H}" fill="#fff"/><rect x="${Mg}" y="${Mg}" width="${W-2*Mg}" height="${H-2*Mg}" fill="none" stroke="#111" stroke-width=".7"/><g fill="none" stroke="#111" stroke-width="${g('lw')}" stroke-linecap="round" stroke-linejoin="round">${body}</g><g fill="none" stroke="#111" stroke-width=".2" font-size="3.2">${dims}</g>${tb}</svg>`;
- $('sheet').innerHTML=svg;st.svg=svg;
+ $('paper').innerHTML=svg;st.svg=svg;st.W=W;st.H=H;st.sc=lbl(s);
  let ps=$('ps');if(!ps){ps=document.createElement('style');ps.id='ps';document.head.appendChild(ps);}
- ps.textContent=`@page{size:${W}mm ${H}mm;margin:0}@media print{#sheet svg{width:${W}mm;height:${H}mm}}`;}
+ ps.textContent=`@page{size:${W}mm ${H}mm;margin:0}@media print{#pvpaper svg{width:${W}mm;height:${H}mm}}`;}
 
 async function load(file){
  if(!file)return;const ext=file.name.split('.').pop().toLowerCase();msg('Đang đọc file…');
@@ -164,6 +171,9 @@ function cyl(cx,cy,r,z0,z1,n){const o=[],pt=(i,z)=>[cx+r*Math.cos(2*Math.PI*i/n)
 $('demo').onclick=()=>setMesh(Float64Array.from([...box(0,0,0,80,50,10),...cyl(40,25,12,10,30,48)]),'mau.stl');
 
 document.querySelectorAll('.grid input,.grid select').forEach(el=>{el.addEventListener('input',render);el.addEventListener('change',render);});
-$('print').onclick=()=>{try{window.print();}catch(e){msg('Trình duyệt chặn in trong khung này — hãy mở trang ở tab riêng rồi in.');}};
+$('preview').onclick=()=>{if(!st.svg){msg('Hãy tải file hoặc bấm “Dùng mẫu” trước.');return;}$('pvpaper').innerHTML=st.svg;$('pvinfo').textContent='Xem trước · Khổ '+$('sheet').value+' ngang ('+st.W+'×'+st.H+' mm) · Tỷ lệ '+st.sc;$('pv').classList.add('show');};
+$('pvclose').onclick=()=>$('pv').classList.remove('show');
+$('pdf').onclick=()=>{try{window.print();}catch(e){alert('Trình duyệt chặn in trong khung này — hãy mở trang ở tab riêng rồi thử lại.');}};
+$('dl').onclick=()=>{if(!st.svg)return;try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([st.svg],{type:'image/svg+xml'}));a.download=($('title').value||'banve')+'.svg';document.body.appendChild(a);a.click();a.remove();}catch(e){msg('Không tải được ở môi trường này.');}};
 $('copy').onclick=async()=>{if(!st.svg)return;try{await navigator.clipboard.writeText(st.svg);msg('Đã sao chép SVG.');}catch(e){const r=$('raw');r.style.display='block';r.value=st.svg;r.select();msg('Hãy sao chép thủ công nội dung SVG bên dưới.');}};
-</script></main></body></html>
+</script></body></html>
