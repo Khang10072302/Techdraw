@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TechDraw Web</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{--bg:#f6f6f4;--fg:#1c1c1a;--card:#fff;--bd:#d8d8d2;--ac:#2a5bd7;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161616;--fg:#eee;--card:#222;--bd:#3a3a3a;--ac:#7aa2ff}}
+:root[data-theme="dark"]{--bg:#161616;--fg:#eee;--card:#222;--bd:#3a3a3a;--ac:#7aa2ff}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:14px}
+h1{font-size:20px;margin:4px 0 10px}
+#drop{border:2px dashed var(--bd);border-radius:10px;padding:16px;text-align:center;background:var(--card)}
+#drop.over{border-color:var(--ac)}
+button,.btn{font:inherit;background:var(--ac);color:#fff;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;display:inline-block;margin:3px}
+button.alt{background:transparent;color:var(--ac);border:1px solid var(--ac)}
+#msg{margin:8px 0;min-height:1.2em;font-size:14px;opacity:.85}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:12px}
+label{display:flex;flex-direction:column;font-size:13px;gap:3px}
+input,select{font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg)}
+.checks{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:12px}
+.checks label{flex-direction:row;align-items:center;gap:5px}
+#sheet{background:#fff;border:1px solid var(--bd);border-radius:6px;overflow:auto}
+#sheet svg{display:block;width:100%;height:auto;min-width:640px}
+#raw{width:100%;height:90px;display:none}
+@media print{body{background:#fff}main{padding:0;max-width:none}main>*:not(#sheet){display:none!important}#sheet{border:0;overflow:visible}#sheet svg{min-width:0}}
+</style></head><body><main>
+<h1>TechDraw Web — bản vẽ kỹ thuật từ STL / 3MF</h1>
+<div id="drop">Kéo thả file STL / 3MF vào đây hoặc
+<label class="btn" style="display:inline-block;flex-direction:row">Chọn file<input id="f" type="file" accept=".stl,.3mf,.step,.stp" hidden></label>
+<button class="alt" id="demo">Dùng mẫu</button></div>
+<div id="msg"></div>
+<div class="grid">
+<label>Khổ giấy<select id="sheet"><option>A4</option><option>A3</option></select></label>
+<label>Tỷ lệ<select id="scale"></select></label>
+<label>Góc chiếu<select id="proj"><option value="3">Góc thứ 3 (US/ISO)</option><option value="1">Góc thứ 1 (châu Âu)</option></select></label>
+<label>Trục hướng lên<select id="up"><option value="z">Z</option><option value="y">Y</option></select></label>
+<label>Ngưỡng cạnh: <span id="angv">30</span>°<input id="ang" type="range" min="5" max="85" value="30"></label>
+<label>Độ dày nét: <span id="lwv">0.35</span> mm<input id="lw" type="range" min="0.15" max="0.8" step="0.05" value="0.35"></label>
+<label>Tên bản vẽ<input id="title"></label>
+<label>Vật liệu<input id="mat" placeholder="PLA"></label>
+<label>Vẽ bởi<input id="by" value="Khang"></label>
+<label>Ngày<input id="date" type="date"></label>
+<div class="checks">
+<label><input type="checkbox" id="v_front" checked>Trước</label>
+<label><input type="checkbox" id="v_top" checked>Trên</label>
+<label><input type="checkbox" id="v_right" checked>Phải</label>
+<label><input type="checkbox" id="v_iso" checked>Iso</label>
+<label><input type="checkbox" id="dims" checked>Kích thước</label>
+</div></div>
+<div><button id="print">In / Lưu PDF</button><button class="alt" id="copy">Sao chép SVG</button></div>
+<textarea id="raw" readonly></textarea>
+<div id="sheet"></div>
+<script>
+const $=id=>document.getElementById(id);
+const SC=[5,2,1,.5,.2,.1,.05,.02,.01,.005];
+const lbl=s=>s>=1?s+':1':'1:'+Math.round(1/s);
+$('scale').innerHTML='<option value="auto">Tự động</option>'+SC.map(s=>`<option value="${s}">${lbl(s)}</option>`).join('');
+$('date').value=new Date().toISOString().slice(0,10);
+const st={P0:null,E:null,N:null,name:''};
+const msg=t=>$('msg').textContent=t;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function parseSTL(buf){const dv=new DataView(buf);
+ if(buf.byteLength>84){const n=dv.getUint32(80,true);if(84+n*50===buf.byteLength){const a=new Float64Array(n*9);for(let i=0;i<n;i++){const o=84+i*50+12;for(let j=0;j<9;j++)a[i*9+j]=dv.getFloat32(o+j*4,true);}return a;}}
+ const t=new TextDecoder().decode(buf),re=/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g,v=[];let m;
+ while((m=re.exec(t)))v.push(+m[1],+m[2],+m[3]);return Float64Array.from(v);}
+
+const ID=[1,0,0,0,1,0,0,0,1,0,0,0];
+const ap=(M,p)=>[p[0]*M[0]+p[1]*M[3]+p[2]*M[6]+M[9],p[0]*M[1]+p[1]*M[4]+p[2]*M[7]+M[10],p[0]*M[2]+p[1]*M[5]+p[2]*M[8]+M[11]];
+function comp(a,b){const c=[];for(let i=0;i<3;i++)for(let j=0;j<3;j++)c.push(a[3*i]*b[j]+a[3*i+1]*b[3+j]+a[3*i+2]*b[6+j]);return c.concat(ap(b,a.slice(9)));}
+async function parse3MF(buf){
+ const z=await JSZip.loadAsync(buf),docs={};
+ for(const n of Object.keys(z.files))if(/\.model$/i.test(n))docs['/'+n]=new DOMParser().parseFromString(await z.files[n].async('string'),'application/xml');
+ const main=Object.keys(docs).find(n=>/3D\/3dmodel\.model$/i.test(n))||Object.keys(docs)[0];
+ if(!main)throw new Error('Không tìm thấy model trong file 3MF');
+ const um={micron:.001,millimeter:1,centimeter:10,inch:25.4,foot:304.8,meter:1000};
+ const unit=um[docs[main].documentElement.getAttribute('unit')||'millimeter']||1;
+ const tm=s=>s?s.trim().split(/\s+/).map(Number):ID,out=[];
+ function emit(doc,id,M,d){if(d>8)return;
+  const o=[...doc.getElementsByTagName('object')].find(e=>e.getAttribute('id')===id);if(!o)return;
+  const me=o.getElementsByTagName('mesh')[0];
+  if(me){const V=[...me.getElementsByTagName('vertex')].map(v=>ap(M,[+v.getAttribute('x'),+v.getAttribute('y'),+v.getAttribute('z')]));
+   for(const t of me.getElementsByTagName('triangle'))for(const k of['v1','v2','v3'])out.push(...V[+t.getAttribute(k)]);}
+  for(const c of o.getElementsByTagName('component')){const p=c.getAttribute('p:path'),d2=p?docs[p]:doc;if(d2)emit(d2,c.getAttribute('objectid'),comp(tm(c.getAttribute('transform')),M),d+1);}}
+ for(const it of docs[main].getElementsByTagName('item'))emit(docs[main],it.getAttribute('objectid'),tm(it.getAttribute('transform')),0);
+ return Float64Array.from(out,v=>v*unit);}
+
+function setMesh(T,name){
+ const n=T.length/9,ids=new Map(),P=[],E=new Map(),N=new Float64Array(n*3),q=1e3;
+ const vid=(x,y,z)=>{const k=Math.round(x*q)+','+Math.round(y*q)+','+Math.round(z*q);let i=ids.get(k);if(i===undefined){i=P.length/3;ids.set(k,i);P.push(x,y,z);}return i;};
+ for(let f=0;f<n;f++){const o=f*9,a=vid(T[o],T[o+1],T[o+2]),b=vid(T[o+3],T[o+4],T[o+5]),c=vid(T[o+6],T[o+7],T[o+8]);
+  const ux=T[o+3]-T[o],uy=T[o+4]-T[o+1],uz=T[o+5]-T[o+2],vx=T[o+6]-T[o],vy=T[o+7]-T[o+1],vz=T[o+8]-T[o+2];
+  let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;const l=Math.hypot(nx,ny,nz)||1;N[f*3]=nx/l;N[f*3+1]=ny/l;N[f*3+2]=nz/l;
+  for(const[p,r]of[[a,b],[b,c],[c,a]]){if(p===r)continue;const k=p<r?p+'_'+r:r+'_'+p;let e=E.get(k);if(!e){e=[p,r,[]];E.set(k,e);}e[2].push(f);}}
+ st.P0=P;st.E=[...E.values()];st.N=N;st.name=name;
+ $('title').value=name.replace(/\.[^.]+$/,'');
+ msg(`Đã tải ${name}: ${n.toLocaleString()} tam giác.`);render();}
+
+function render(){
+ if(!st.P0)return;
+ const P0=st.P0,Yup=$('up').value==='y',g=id=>$(id).value,on=id=>$(id).checked;
+ const gp=i=>{const x=P0[i*3],y=P0[i*3+1],z=P0[i*3+2];return Yup?[x,-z,y]:[x,y,z];};
+ const bb=[1e12,1e12,1e12,-1e12,-1e12,-1e12];
+ for(let i=0;i<P0.length/3;i++){const p=gp(i);for(let k=0;k<3;k++){if(p[k]<bb[k])bb[k]=p[k];if(p[k]>bb[k+3])bb[k+3]=p[k];}}
+ const cosT=Math.cos(+g('ang')*Math.PI/180),N=st.N,segs=[];
+ for(const[p,r,fs]of st.E){let f=fs.length!==2;if(!f){const a=fs[0]*3,b=fs[1]*3;f=N[a]*N[b]+N[a+1]*N[b+1]+N[a+2]*N[b+2]<cosT;}
+  if(f)segs.push(...gp(p),...gp(r));}
+ $('angv').textContent=g('ang');$('lwv').textContent=g('lw');
+ const W=g('sheet')==='A3'?420:297,H=W===420?297:210,Mg=10,mode=g('proj');
+ const lay=mode==='3'?{top:[0,0],iso:[0,1],front:[1,0],right:[1,1]}:{right:[0,0],front:[0,1],iso:[1,0],top:[1,1]};
+ const r2=Math.SQRT1_2,r6=1/Math.sqrt(6);
+ const PR={front:p=>[p[0],p[2]],top:p=>[p[0],p[1]],right:p=>[p[1],p[2]],iso:p=>[(p[0]+p[1])*r2,(-p[0]+p[1]+2*p[2])*r6]};
+ const vs=['front','top','right','iso'].filter(k=>on('v_'+k)),ext={};
+ for(const k of vs){let a=[1e12,-1e12,1e12,-1e12];
+  for(let i=0;i<8;i++){const q=PR[k]([bb[i&1?3:0],bb[i&2?4:1],bb[i&4?5:2]]);a=[Math.min(a[0],q[0]),Math.max(a[1],q[0]),Math.min(a[2],q[1]),Math.max(a[3],q[1])];}ext[k]=a;}
+ const cw=[0,0],rh=[0,0];
+ for(const k of vs){const[r,c]=lay[k],e=ext[k];cw[c]=Math.max(cw[c],e[1]-e[0]);rh[r]=Math.max(rh[r],e[3]-e[2]);}
+ const gap=28,aw=W-2*Mg-36,ah=H-2*Mg-60;
+ let s=+g('scale')||0;
+ if(!s)s=SC.find(v=>v*(cw[0]+cw[1])+gap<=aw&&v*(rh[0]+rh[1])+gap<=ah)||SC[SC.length-1];
+ const cx=[Mg+22,Mg+22+s*cw[0]+gap],cy=[Mg+14,Mg+14+s*rh[0]+gap];
+ const fm=v=>(Math.round(v*100)/100).toString();
+ const hd=(x1,x2,yv,t)=>{const y=yv+8;return `<path d="M${x1} ${yv+1.5}V${y+2}M${x2} ${yv+1.5}V${y+2}"/><path d="M${x1} ${y}H${x2}" marker-start="url(#ar)" marker-end="url(#ar)"/><text x="${(x1+x2)/2}" y="${y-1.2}" text-anchor="middle" fill="#111" stroke="none">${t}</text>`;};
+ const vd=(y1,y2,xv,t)=>{const x=xv-8;return `<path d="M${xv-1.5} ${y1}H${x-2}M${xv-1.5} ${y2}H${x-2}"/><path d="M${x} ${y1}V${y2}" marker-start="url(#ar)" marker-end="url(#ar)"/><text transform="translate(${x-1.2} ${(y1+y2)/2}) rotate(-90)" text-anchor="middle" fill="#111" stroke="none">${t}</text>`;};
+ const names={front:'Trước',top:'Trên',right:'Phải',iso:'Iso'};
+ let body='',dims='';
+ for(const k of vs){const[r,c]=lay[k],e=ext[k],w=s*(e[1]-e[0]),h=s*(e[3]-e[2]);
+  const ox=cx[c]+(s*cw[c]-w)/2,oy=cy[r]+(s*rh[r]-h)/2;
+  const X=u=>ox+(u-e[0])*s,Y=v=>oy+(e[3]-v)*s;let d='';
+  for(let i=0;i<segs.length;i+=6){const a=PR[k]([segs[i],segs[i+1],segs[i+2]]),b=PR[k]([segs[i+3],segs[i+4],segs[i+5]]);
+   const x1=X(a[0]),y1=Y(a[1]),x2=X(b[0]),y2=Y(b[1]);if(Math.abs(x1-x2)+Math.abs(y1-y2)<.02)continue;
+   d+=`M${x1.toFixed(2)} ${y1.toFixed(2)}L${x2.toFixed(2)} ${y2.toFixed(2)}`;}
+  body+=`<path d="${d}"/>`;
+  dims+=`<text x="${ox+w/2}" y="${oy-3}" text-anchor="middle" fill="#111" stroke="none" font-size="3">${names[k]}</text>`;
+  if(on('dims')){if(k==='front')dims+=hd(ox,ox+w,oy+h,fm(bb[3]-bb[0]))+vd(oy,oy+h,ox,fm(bb[5]-bb[2]));if(k==='top')dims+=vd(oy,oy+h,ox,fm(bb[4]-bb[1]));}}
+ const tx=W-Mg-110,ty=H-Mg-30,t=(x,y,s2,fs)=>`<text x="${tx+x}" y="${ty+y}"${fs?` font-size="${fs}"`:''}>${esc(s2)}</text>`;
+ const tb=`<g fill="none" stroke="#111" stroke-width=".35"><rect x="${tx}" y="${ty}" width="110" height="30"/><path d="M${tx} ${ty+10}h110M${tx} ${ty+20}h110M${tx+55} ${ty+10}v20"/></g><g fill="#111" font-size="3.4">${t(3,7,g('title')||'Bản vẽ',5)}${t(3,16.5,'Vật liệu: '+g('mat'))}${t(58,16.5,'Tỷ lệ '+lbl(s)+' · mm')}${t(3,26.5,'Vẽ: '+g('by')+' · '+g('date'))}${t(58,26.5,'Khổ '+g('sheet')+' · Góc chiếu thứ '+mode)}</g>`;
+ const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}mm" height="${H}mm" font-family="Arial,Helvetica,sans-serif"><defs><marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerUnits="userSpaceOnUse" markerWidth="3" markerHeight="3" orient="auto-start-reverse"><path d="M0 1L10 5L0 9z" fill="#111" stroke="none"/></marker></defs><rect width="${W}" height="${H}" fill="#fff"/><rect x="${Mg}" y="${Mg}" width="${W-2*Mg}" height="${H-2*Mg}" fill="none" stroke="#111" stroke-width=".7"/><g fill="none" stroke="#111" stroke-width="${g('lw')}" stroke-linecap="round" stroke-linejoin="round">${body}</g><g fill="none" stroke="#111" stroke-width=".2" font-size="3.2">${dims}</g>${tb}</svg>`;
+ $('sheet').innerHTML=svg;st.svg=svg;
+ let ps=$('ps');if(!ps){ps=document.createElement('style');ps.id='ps';document.head.appendChild(ps);}
+ ps.textContent=`@page{size:${W}mm ${H}mm;margin:0}@media print{#sheet svg{width:${W}mm;height:${H}mm}}`;}
+
+async function load(file){
+ if(!file)return;const ext=file.name.split('.').pop().toLowerCase();msg('Đang đọc file…');
+ try{let T;
+  if(ext==='stl')T=parseSTL(await file.arrayBuffer());
+  else if(ext==='3mf')T=await parse3MF(await file.arrayBuffer());
+  else{msg('File STEP/STP chưa đọc trực tiếp được trong trang này. Hãy xuất sang STL hoặc 3MF từ phần mềm CAD rồi thả vào đây.');return;}
+  if(!T||!T.length)throw new Error('Không có tam giác nào trong file');
+  setMesh(T,file.name);
+ }catch(err){msg('Lỗi: '+err.message);}}
+$('f').onchange=e=>load(e.target.files[0]);
+const dz=$('drop');
+dz.ondragover=e=>{e.preventDefault();dz.classList.add('over');};
+dz.ondragleave=()=>dz.classList.remove('over');
+dz.ondrop=e=>{e.preventDefault();dz.classList.remove('over');load(e.dataTransfer.files[0]);};
+
+function box(x,y,z,w,d,h){const c=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]].map(p=>[x+p[0]*w,y+p[1]*d,z+p[2]*h]);
+ const q=[[0,3,2,1],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]],o=[];
+ for(const[a,b,c2,d2]of q)for(const i of[a,b,c2,a,c2,d2])o.push(...c[i]);return o;}
+function cyl(cx,cy,r,z0,z1,n){const o=[],pt=(i,z)=>[cx+r*Math.cos(2*Math.PI*i/n),cy+r*Math.sin(2*Math.PI*i/n),z];
+ for(let i=0;i<n;i++){const a=pt(i,z0),b=pt(i+1,z0),c=pt(i+1,z1),d=pt(i,z1);o.push(...a,...b,...c,...a,...c,...d,cx,cy,z1,...c,...d,cx,cy,z0,...a,...b);}return o;}
+$('demo').onclick=()=>setMesh(Float64Array.from([...box(0,0,0,80,50,10),...cyl(40,25,12,10,30,48)]),'mau.stl');
+
+document.querySelectorAll('.grid input,.grid select').forEach(el=>{el.addEventListener('input',render);el.addEventListener('change',render);});
+$('print').onclick=()=>{try{window.print();}catch(e){msg('Trình duyệt chặn in trong khung này — hãy mở trang ở tab riêng rồi in.');}};
+$('copy').onclick=async()=>{if(!st.svg)return;try{await navigator.clipboard.writeText(st.svg);msg('Đã sao chép SVG.');}catch(e){const r=$('raw');r.style.display='block';r.value=st.svg;r.select();msg('Hãy sao chép thủ công nội dung SVG bên dưới.');}};
+</script></main></body></html>
