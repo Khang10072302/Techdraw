@@ -3,32 +3,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>TechDraw Web</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <style>
 :root{--bg:#f6f6f4;--fg:#1c1c1a;--card:#fff;--bd:#d8d8d2;--ac:#2a5bd7;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#161616;--fg:#eee;--card:#222;--bd:#3a3a3a;--ac:#7aa2ff}}
 :root[data-theme="dark"]{--bg:#161616;--fg:#eee;--card:#222;--bd:#3a3a3a;--ac:#7aa2ff}
 html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:1100px;margin:0 auto;padding:14px}
+main{max-width:1280px;margin:0 auto;padding:12px}
 h1{font-size:20px;margin:4px 0 10px}
-#drop{border:2px dashed var(--bd);border-radius:10px;padding:16px;text-align:center;background:var(--card)}
+#drop{border:2px dashed var(--bd);border-radius:10px;padding:12px;text-align:center;background:var(--card)}
 #drop.over{border-color:var(--ac)}
-button,.btn{font:inherit;background:var(--ac);color:#fff;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;display:inline-block;margin:3px}
+button,.btn{font:inherit;background:var(--ac);color:#fff;border:0;border-radius:8px;padding:7px 11px;cursor:pointer;margin:3px}
 button.alt{background:transparent;color:var(--ac);border:1px solid var(--ac)}
-#msg{margin:8px 0;min-height:1.2em;font-size:14px;opacity:.85}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin-bottom:12px}
+button:disabled{opacity:.4;cursor:default}
+#msg{margin:6px 0;min-height:1.2em;font-size:14px;opacity:.85}
+.wrap{display:grid;grid-template-columns:minmax(280px,.8fr) 1.5fr;gap:12px;align-items:start}
+@media(max-width:820px){.wrap{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:10px;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 label{display:flex;flex-direction:column;font-size:13px;gap:3px}
-input,select{font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg)}
-.checks{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:12px}
-.checks label{flex-direction:row;align-items:center;gap:5px}
-#paper{background:#fff;border:1px solid var(--bd);border-radius:6px;overflow:auto}
-#paper svg{display:block;width:100%;height:auto;min-width:640px}
+input,select{font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6px;background:var(--bg);color:var(--fg);min-width:0}
+#v3d{height:340px;border-radius:8px;overflow:hidden;background:#2b2f36;color:#ddd;font-size:13px}
+#v3d canvas{display:block}
+.hint{font-size:12px;opacity:.7;margin:4px 0}
+#paper{background:#fff;border:1px solid var(--bd);border-radius:6px;overflow:auto;margin-bottom:10px;touch-action:none}
+#paper svg{display:block;width:100%;height:auto;min-width:640px;user-select:none}
 #pv{position:fixed;inset:0;z-index:50;background:#6b6b6b;display:none;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
 #pv.show{display:flex}
 #pv .bar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:var(--card);color:var(--fg)}
 #pv .bar span{flex:1;font-size:13px}
 #pvpaper{flex:1;overflow:auto;padding:16px;display:flex;justify-content:center;align-items:flex-start}
 #pvpaper svg{background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.5);width:100%;max-width:1100px;height:auto;display:block}
-#raw{width:100%;height:90px;display:none}
 @media print{html,body{background:#fff!important}main{display:none!important}#pv{position:static;display:block!important;background:#fff;padding:0}#pv .bar{display:none}#pvpaper{padding:0;overflow:visible;display:block}#pvpaper svg{box-shadow:none;max-width:none}}
 </style></head><body><main>
 <h1>TechDraw Web — bản vẽ kỹ thuật từ STL / 3MF</h1>
@@ -36,43 +42,66 @@ input,select{font:inherit;padding:6px;border:1px solid var(--bd);border-radius:6
 <label class="btn" style="display:inline-block;flex-direction:row">Chọn file<input id="f" type="file" accept=".stl,.3mf,.step,.stp" hidden></label>
 <button class="alt" id="demo">Dùng mẫu</button></div>
 <div id="msg"></div>
-<div class="grid">
-<label>Khổ giấy<select id="sheet"><option>A4</option><option>A3</option></select></label>
-<label>Tỷ lệ<select id="scale"></select></label>
-<label>Góc chiếu<select id="proj"><option value="3">Góc thứ 3 (US/ISO)</option><option value="1">Góc thứ 1 (châu Âu)</option></select></label>
-<label>Trục hướng lên<select id="up"><option value="z">Z</option><option value="y">Y</option></select></label>
-<label>Ngưỡng cạnh: <span id="angv">30</span>°<input id="ang" type="range" min="5" max="85" value="30"></label>
-<label>Độ dày nét: <span id="lwv">0.35</span> mm<input id="lw" type="range" min="0.15" max="0.8" step="0.05" value="0.35"></label>
-<label>Tên bản vẽ<input id="title"></label>
-<label>Vật liệu<input id="mat" placeholder="PLA"></label>
-<label>Vẽ bởi<input id="by" value="Khang"></label>
-<label>Ngày<input id="date" type="date"></label>
-<div class="checks">
-<label><input type="checkbox" id="v_front" checked>Trước</label>
-<label><input type="checkbox" id="v_top" checked>Trên</label>
-<label><input type="checkbox" id="v_right" checked>Phải</label>
-<label><input type="checkbox" id="v_iso" checked>Iso</label>
-<label><input type="checkbox" id="dims" checked>Kích thước</label>
-</div></div>
-<div><button id="preview">Xem trước &amp; xuất PDF</button><button class="alt" id="dl">Tải SVG</button><button class="alt" id="copy">Sao chép SVG</button></div>
-<textarea id="raw" readonly></textarea>
-<div id="paper"></div></main>
+<div class="wrap">
+<section>
+ <div class="card">
+  <div id="v3d"></div>
+  <div class="hint">Kéo để xoay · cuộn để zoom · bấm vào một mặt để chọn mặt đó.</div>
+  <div id="pk">Chưa chọn mặt nào.</div>
+  <button id="addface" disabled>Thêm hình chiếu từ mặt này</button><button class="alt" id="std">Tạo 4 hình chuẩn</button>
+ </div>
+ <div class="card grid">
+  <label>Khổ giấy<select id="sheet"><option>A4</option><option>A3</option></select></label>
+  <label>Trục hướng lên<select id="up"><option value="z">Z</option><option value="y">Y</option></select></label>
+  <label>Ngưỡng cạnh: <span id="angv">30</span>°<input id="ang" type="range" min="5" max="85" value="30"></label>
+  <label>Độ dày nét: <span id="lwv">0.35</span><input id="lw" type="range" min="0.15" max="0.8" step="0.05" value="0.35"></label>
+  <label>Tên bản vẽ<input id="title"></label>
+  <label>Vật liệu<input id="mat" placeholder="PLA"></label>
+  <label>Vẽ bởi<input id="by" value="Khang"></label>
+  <label>Ngày<input id="date" type="date"></label>
+ </div>
+</section>
+<section>
+ <div>
+  <button class="alt" id="arr">Xếp tự động</button>
+  <button class="alt" id="dm">Thêm số đo</button>
+  <select id="dk"><option value="h">Ngang</option><option value="v">Dọc</option><option value="a">Nghiêng</option></select>
+  <input id="doff" type="number" value="8" style="width:56px" title="Khoảng cách đường kích thước (mm)">
+  <button id="preview">Xem trước &amp; xuất PDF</button><button class="alt" id="dl">Tải SVG</button>
+ </div>
+ <div id="paper"></div>
+ <div class="card" id="panel">
+  <div id="qh">Bấm vào một hình trên giấy để chỉnh sửa. Kéo hình để di chuyển.</div>
+  <div class="grid" id="qf" style="display:none;margin-top:8px">
+   <label>Tên hình<input id="qn"></label>
+   <label>Hướng nhìn<select id="qd"></select></label>
+   <label>Tỷ lệ<select id="qs"></select></label>
+   <div><button class="alt" id="qr">Xoay 90°</button><button class="alt" id="qx">Xoá hình</button></div>
+  </div>
+  <div id="qlist" style="font-size:13px;margin-top:6px"></div>
+ </div>
+</section>
+</div></main>
 <div id="pv"><div class="bar"><span id="pvinfo"></span><button id="pdf">Xuất PDF</button><button class="alt" id="pvclose">Đóng</button></div><div id="pvpaper"></div></div>
 <script>
 const $=id=>document.getElementById(id);
-const SC=[5,2,1,.5,.2,.1,.05,.02,.01,.005];
+const SC=[5,2,1,.5,.25,.2,.1,.05,.02,.01];
 const lbl=s=>s>=1?s+':1':'1:'+Math.round(1/s);
-$('scale').innerHTML='<option value="auto">Tự động</option>'+SC.map(s=>`<option value="${s}">${lbl(s)}</option>`).join('');
-$('date').value=new Date().toISOString().slice(0,10);
-const st={P0:null,E:null,N:null,name:''};
+const DIR={'Trước':[0,-1,0],'Sau':[0,1,0],'Phải':[1,0,0],'Trái':[-1,0,0],'Trên':[0,0,1],'Dưới':[0,0,-1],'Iso':[1,-1,1]};
+const st={views:[],dims:[],sel:null,mode:null,tmp:null,nid:1,pickN:null,P0:null};
 const msg=t=>$('msg').textContent=t;
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fm=v=>Math.round(v*100)/100;
+const sz=()=>$('sheet').value==='A3'?[420,297]:[297,210];
+$('qs').innerHTML=SC.map(s=>`<option value="${s}">${lbl(s)}</option>`).join('');
+$('qd').innerHTML='<option value="">Tuỳ chỉnh</option>'+Object.keys(DIR).map(k=>`<option>${k}</option>`).join('');
+$('date').value=new Date().toISOString().slice(0,10);
 
+/* ---------- đọc file ---------- */
 function parseSTL(buf){const dv=new DataView(buf);
  if(buf.byteLength>84){const n=dv.getUint32(80,true);if(84+n*50===buf.byteLength){const a=new Float64Array(n*9);for(let i=0;i<n;i++){const o=84+i*50+12;for(let j=0;j<9;j++)a[i*9+j]=dv.getFloat32(o+j*4,true);}return a;}}
  const t=new TextDecoder().decode(buf),re=/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g,v=[];let m;
  while((m=re.exec(t)))v.push(+m[1],+m[2],+m[3]);return Float64Array.from(v);}
-
 const ID=[1,0,0,0,1,0,0,0,1,0,0,0];
 const ap=(M,p)=>[p[0]*M[0]+p[1]*M[3]+p[2]*M[6]+M[9],p[0]*M[1]+p[1]*M[4]+p[2]*M[7]+M[10],p[0]*M[2]+p[1]*M[5]+p[2]*M[8]+M[11]];
 function comp(a,b){const c=[];for(let i=0;i<3;i++)for(let j=0;j<3;j++)c.push(a[3*i]*b[j]+a[3*i+1]*b[3+j]+a[3*i+2]*b[6+j]);return c.concat(ap(b,a.slice(9)));}
@@ -98,56 +127,164 @@ function setMesh(T,name){
  const vid=(x,y,z)=>{const k=Math.round(x*q)+','+Math.round(y*q)+','+Math.round(z*q);let i=ids.get(k);if(i===undefined){i=P.length/3;ids.set(k,i);P.push(x,y,z);}return i;};
  for(let f=0;f<n;f++){const o=f*9,a=vid(T[o],T[o+1],T[o+2]),b=vid(T[o+3],T[o+4],T[o+5]),c=vid(T[o+6],T[o+7],T[o+8]);
   const ux=T[o+3]-T[o],uy=T[o+4]-T[o+1],uz=T[o+5]-T[o+2],vx=T[o+6]-T[o],vy=T[o+7]-T[o+1],vz=T[o+8]-T[o+2];
-  let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;const l=Math.hypot(nx,ny,nz)||1;N[f*3]=nx/l;N[f*3+1]=ny/l;N[f*3+2]=nz/l;
+  const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx,l=Math.hypot(nx,ny,nz)||1;N[f*3]=nx/l;N[f*3+1]=ny/l;N[f*3+2]=nz/l;
   for(const[p,r]of[[a,b],[b,c],[c,a]]){if(p===r)continue;const k=p<r?p+'_'+r:r+'_'+p;let e=E.get(k);if(!e){e=[p,r,[]];E.set(k,e);}e[2].push(f);}}
- st.P0=P;st.E=[...E.values()];st.N=N;st.name=name;
- $('title').value=name.replace(/\.[^.]+$/,'');
- msg(`Đã tải ${name}: ${n.toLocaleString()} tam giác.`);render();}
+ Object.assign(st,{T,P0:P,E:[...E.values()],N,adj:null,views:[],dims:[],sel:null,pickN:null,tmp:null});
+ $('title').value=name.replace(/\.[^.]+$/,'');$('pk').textContent='Chưa chọn mặt nào.';$('addface').disabled=true;
+ build3d();geom();addStd();panel();
+ msg(`Đã tải ${name}: ${n.toLocaleString()} tam giác.`);}
 
-function render(){
+/* ---------- hình học & hình chiếu ---------- */
+function geom(){
  if(!st.P0)return;
- const P0=st.P0,Yup=$('up').value==='y',g=id=>$(id).value,on=id=>$(id).checked;
- const gp=i=>{const x=P0[i*3],y=P0[i*3+1],z=P0[i*3+2];return Yup?[x,-z,y]:[x,y,z];};
- const bb=[1e12,1e12,1e12,-1e12,-1e12,-1e12];
- for(let i=0;i<P0.length/3;i++){const p=gp(i);for(let k=0;k<3;k++){if(p[k]<bb[k])bb[k]=p[k];if(p[k]>bb[k+3])bb[k+3]=p[k];}}
- const cosT=Math.cos(+g('ang')*Math.PI/180),N=st.N,segs=[];
- for(const[p,r,fs]of st.E){let f=fs.length!==2;if(!f){const a=fs[0]*3,b=fs[1]*3;f=N[a]*N[b]+N[a+1]*N[b+1]+N[a+2]*N[b+2]<cosT;}
-  if(f)segs.push(...gp(p),...gp(r));}
- $('angv').textContent=g('ang');$('lwv').textContent=g('lw');
- const W=g('sheet')==='A3'?420:297,H=W===420?297:210,Mg=10,mode=g('proj');
- const lay=mode==='3'?{top:[0,0],iso:[0,1],front:[1,0],right:[1,1]}:{right:[0,0],front:[0,1],iso:[1,0],top:[1,1]};
- const r2=Math.SQRT1_2,r6=1/Math.sqrt(6);
- const PR={front:p=>[p[0],p[2]],top:p=>[p[0],p[1]],right:p=>[p[1],p[2]],iso:p=>[(p[0]+p[1])*r2,(-p[0]+p[1]+2*p[2])*r6]};
- const vs=['front','top','right','iso'].filter(k=>on('v_'+k)),ext={};
- for(const k of vs){let a=[1e12,-1e12,1e12,-1e12];
-  for(let i=0;i<8;i++){const q=PR[k]([bb[i&1?3:0],bb[i&2?4:1],bb[i&4?5:2]]);a=[Math.min(a[0],q[0]),Math.max(a[1],q[0]),Math.min(a[2],q[1]),Math.max(a[3],q[1])];}ext[k]=a;}
- const cw=[0,0],rh=[0,0];
- for(const k of vs){const[r,c]=lay[k],e=ext[k];cw[c]=Math.max(cw[c],e[1]-e[0]);rh[r]=Math.max(rh[r],e[3]-e[2]);}
- const gap=28,aw=W-2*Mg-36,ah=H-2*Mg-60;
- let s=+g('scale')||0;
- if(!s)s=SC.find(v=>v*(cw[0]+cw[1])+gap<=aw&&v*(rh[0]+rh[1])+gap<=ah)||SC[SC.length-1];
- const cx=[Mg+22,Mg+22+s*cw[0]+gap],cy=[Mg+14,Mg+14+s*rh[0]+gap];
- const fm=v=>(Math.round(v*100)/100).toString();
- const hd=(x1,x2,yv,t)=>{const y=yv+8;return `<path d="M${x1} ${yv+1.5}V${y+2}M${x2} ${yv+1.5}V${y+2}"/><path d="M${x1} ${y}H${x2}" marker-start="url(#ar)" marker-end="url(#ar)"/><text x="${(x1+x2)/2}" y="${y-1.2}" text-anchor="middle" fill="#111" stroke="none">${t}</text>`;};
- const vd=(y1,y2,xv,t)=>{const x=xv-8;return `<path d="M${xv-1.5} ${y1}H${x-2}M${xv-1.5} ${y2}H${x-2}"/><path d="M${x} ${y1}V${y2}" marker-start="url(#ar)" marker-end="url(#ar)"/><text transform="translate(${x-1.2} ${(y1+y2)/2}) rotate(-90)" text-anchor="middle" fill="#111" stroke="none">${t}</text>`;};
- const names={front:'Trước',top:'Trên',right:'Phải',iso:'Iso'};
- let body='',dims='';
- for(const k of vs){const[r,c]=lay[k],e=ext[k],w=s*(e[1]-e[0]),h=s*(e[3]-e[2]);
-  const ox=cx[c]+(s*cw[c]-w)/2,oy=cy[r]+(s*rh[r]-h)/2;
-  const X=u=>ox+(u-e[0])*s,Y=v=>oy+(e[3]-v)*s;let d='';
-  for(let i=0;i<segs.length;i+=6){const a=PR[k]([segs[i],segs[i+1],segs[i+2]]),b=PR[k]([segs[i+3],segs[i+4],segs[i+5]]);
-   const x1=X(a[0]),y1=Y(a[1]),x2=X(b[0]),y2=Y(b[1]);if(Math.abs(x1-x2)+Math.abs(y1-y2)<.02)continue;
-   d+=`M${x1.toFixed(2)} ${y1.toFixed(2)}L${x2.toFixed(2)} ${y2.toFixed(2)}`;}
-  body+=`<path d="${d}"/>`;
-  dims+=`<text x="${ox+w/2}" y="${oy-3}" text-anchor="middle" fill="#111" stroke="none" font-size="3">${names[k]}</text>`;
-  if(on('dims')){if(k==='front')dims+=hd(ox,ox+w,oy+h,fm(bb[3]-bb[0]))+vd(oy,oy+h,ox,fm(bb[5]-bb[2]));if(k==='top')dims+=vd(oy,oy+h,ox,fm(bb[4]-bb[1]));}}
- const tx=W-Mg-110,ty=H-Mg-30,t=(x,y,s2,fs)=>`<text x="${tx+x}" y="${ty+y}"${fs?` font-size="${fs}"`:''}>${esc(s2)}</text>`;
- const tb=`<g fill="none" stroke="#111" stroke-width=".35"><rect x="${tx}" y="${ty}" width="110" height="30"/><path d="M${tx} ${ty+10}h110M${tx} ${ty+20}h110M${tx+55} ${ty+10}v20"/></g><g fill="#111" font-size="3.4">${t(3,7,g('title')||'Bản vẽ',5)}${t(3,16.5,'Vật liệu: '+g('mat'))}${t(58,16.5,'Tỷ lệ '+lbl(s)+' · mm')}${t(3,26.5,'Vẽ: '+g('by')+' · '+g('date'))}${t(58,26.5,'Khổ '+g('sheet')+' · Góc chiếu thứ '+mode)}</g>`;
- const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}mm" height="${H}mm" font-family="Arial,Helvetica,sans-serif"><defs><marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerUnits="userSpaceOnUse" markerWidth="3" markerHeight="3" orient="auto-start-reverse"><path d="M0 1L10 5L0 9z" fill="#111" stroke="none"/></marker></defs><rect width="${W}" height="${H}" fill="#fff"/><rect x="${Mg}" y="${Mg}" width="${W-2*Mg}" height="${H-2*Mg}" fill="none" stroke="#111" stroke-width=".7"/><g fill="none" stroke="#111" stroke-width="${g('lw')}" stroke-linecap="round" stroke-linejoin="round">${body}</g><g fill="none" stroke="#111" stroke-width=".2" font-size="3.2">${dims}</g>${tb}</svg>`;
- $('paper').innerHTML=svg;st.svg=svg;st.W=W;st.H=H;st.sc=lbl(s);
- let ps=$('ps');if(!ps){ps=document.createElement('style');ps.id='ps';document.head.appendChild(ps);}
- ps.textContent=`@page{size:${W}mm ${H}mm;margin:0}@media print{#pvpaper svg{width:${W}mm;height:${H}mm}}`;}
+ const Y=$('up').value==='y',P=st.P0,n=P.length/3,Pm=new Float64Array(P.length),bb=[1e12,1e12,1e12,-1e12,-1e12,-1e12];
+ for(let i=0;i<n;i++){let x=P[i*3],y=P[i*3+1],z=P[i*3+2];if(Y){const t=y;y=-z;z=t;}Pm[i*3]=x;Pm[i*3+1]=y;Pm[i*3+2]=z;
+  for(let k=0;k<3;k++){const v=Pm[i*3+k];if(v<bb[k])bb[k]=v;if(v>bb[k+3])bb[k+3]=v;}}
+ st.Pm=Pm;st.bb=bb;
+ const cosT=Math.cos(+$('ang').value*Math.PI/180),N=st.N,seg=[];
+ for(const[p,r,fs]of st.E){let f=fs.length!==2;if(!f){const a=fs[0]*3,b=fs[1]*3;f=N[a]*N[b]+N[a+1]*N[b+1]+N[a+2]*N[b+2]<cosT;}if(f)seg.push(p,r);}
+ st.seg=seg;st.views.forEach(calc);}
+function basis(v){
+ const l=Math.hypot(...v.n),f=v.n.map(a=>-a/l),up=Math.abs(f[2])>.9?[0,1,0]:[0,0,1],d=up[0]*f[0]+up[1]*f[1]+up[2]*f[2];
+ let u=up.map((a,i)=>a-d*f[i]);const ul=Math.hypot(...u);u=u.map(a=>a/ul);
+ const r=[f[1]*u[2]-f[2]*u[1],f[2]*u[0]-f[0]*u[2],f[0]*u[1]-f[1]*u[0]],k=v.rot%4;
+ v.B={r,u,c:[1,0,-1,0][k],s:[0,1,0,-1][k]};}
+function pj(v,x,y,z){const{r,u,c,s}=v.B,a=x*r[0]+y*r[1]+z*r[2],b=x*u[0]+y*u[1]+z*u[2];return[a*c-b*s,a*s+b*c];}
+function calc(v){
+ basis(v);const bb=st.bb;let a=[1e12,-1e12,1e12,-1e12];
+ for(let i=0;i<8;i++){const q=pj(v,bb[i&1?3:0],bb[i&2?4:1],bb[i&4?5:2]);a=[Math.min(a[0],q[0]),Math.max(a[1],q[0]),Math.min(a[2],q[1]),Math.max(a[3],q[1])];}
+ v.e=a;v.um=(a[0]+a[1])/2;v.vm=(a[2]+a[3])/2;
+ const Pm=st.Pm,n=Pm.length/3,Q=new Float64Array(n*2),s=v.s,A=[];
+ for(let i=0;i<n;i++){const q=pj(v,Pm[i*3],Pm[i*3+1],Pm[i*3+2]);Q[i*2]=q[0];Q[i*2+1]=q[1];}
+ const sg=st.seg;
+ for(let i=0;i<sg.length;i+=2){const p=sg[i]*2,r=sg[i+1]*2,x1=(Q[p]-v.um)*s,y1=-(Q[p+1]-v.vm)*s,x2=(Q[r]-v.um)*s,y2=-(Q[r+1]-v.vm)*s;
+  if(Math.abs(x1-x2)+Math.abs(y1-y2)<.02)continue;A.push(`M${x1.toFixed(2)} ${y1.toFixed(2)}L${x2.toFixed(2)} ${y2.toFixed(2)}`);}
+ v.d=A.join('');v.Q=Q;}
+function mk(n,name){const v={id:st.nid++,name,n,rot:0,s:1,x:0,y:0};st.views.push(v);calc(v);st.sel=v.id;return v;}
+function addStd(){st.views=[];st.dims=[];st.sel=null;for(const k of['Trên','Iso','Trước','Phải'])mk(DIR[k],k);st.sel=null;arrange();}
+function arrange(){
+ const n=st.views.length;if(!n)return;const[W,H]=sz(),x0=32,y0=24,aw=W-x0-20,ah=H-y0-44,cols=n>1?2:1,rows=Math.ceil(n/cols),cw=aw/cols,ch=ah/rows;
+ const s=SC.find(c=>st.views.every(v=>(v.e[1]-v.e[0])*c+14<=cw&&(v.e[3]-v.e[2])*c+22<=ch))||SC[SC.length-1];
+ st.views.forEach((v,i)=>{v.s=s;calc(v);v.x=x0+cw*(i%cols+.5);v.y=y0+ch*(Math.floor(i/cols)+.5);});draw();panel();}
 
+/* ---------- vẽ tờ giấy ---------- */
+function dimSvg(m,v){
+ const s=v.s,X=u=>(u-v.um)*s,Y=w=>-(w-v.vm)*s,ax=X(m.a[0]),ay=Y(m.a[1]),bx=X(m.b[0]),by=Y(m.b[1]),o=m.off,sg=Math.sign(o)||1;
+ let val,l1,l2,l3,l4,ext;
+ if(m.k==='h'){val=Math.abs(m.b[0]-m.a[0]);const y=Math.max(ay,by)+o;l1=ax;l2=y;l3=bx;l4=y;ext=[[ax,ay,ax,y+2*sg],[bx,by,bx,y+2*sg]];}
+ else if(m.k==='v'){val=Math.abs(m.b[1]-m.a[1]);const x=Math.min(ax,bx)-o;l1=x;l2=ay;l3=x;l4=by;ext=[[ax,ay,x-2*sg,ay],[bx,by,x-2*sg,by]];}
+ else{const dx=bx-ax,dy=by-ay,L=Math.hypot(dx,dy)||1,ux=dy/L,uy=-dx/L;val=Math.hypot(m.b[0]-m.a[0],m.b[1]-m.a[1]);
+  l1=ax+ux*o;l2=ay+uy*o;l3=bx+ux*o;l4=by+uy*o;ext=[[ax,ay,l1+ux*2*sg,l2+uy*2*sg],[bx,by,l3+ux*2*sg,l4+uy*2*sg]];}
+ const ang=Math.atan2(l4-l2,l3-l1)*180/Math.PI,a2=((ang+90)%180+180)%180-90;
+ return ext.map(e=>`<path d="M${fm(e[0])} ${fm(e[1])}L${fm(e[2])} ${fm(e[3])}"/>`).join('')+
+ `<path d="M${fm(l1)} ${fm(l2)}L${fm(l3)} ${fm(l4)}" marker-start="url(#ar)" marker-end="url(#ar)"/><text transform="translate(${fm((l1+l3)/2)} ${fm((l2+l4)/2)}) rotate(${fm(a2)}) translate(0 -1.2)" text-anchor="middle" fill="#111" stroke="none">${fm(val)}</text>`;}
+function sheetSvg(ui){
+ const[W,H]=sz(),Mg=10,g=id=>$(id).value;let body='';
+ for(const v of st.views){
+  const w=(v.e[1]-v.e[0])*v.s,h=(v.e[3]-v.e[2])*v.s;
+  let i=`<path d="${v.d}" fill="none" stroke="#111" stroke-width="${g('lw')}" stroke-linecap="round" stroke-linejoin="round"/><text y="${fm(-h/2-3)}" text-anchor="middle" font-size="3" fill="#111">${esc(v.name)} · ${lbl(v.s)}</text>`;
+  const ds=st.dims.filter(m=>m.v===v.id);
+  if(ds.length)i+=`<g fill="none" stroke="#111" stroke-width=".2" font-size="3.2">${ds.map(m=>dimSvg(m,v)).join('')}</g>`;
+  if(ui)i=`<rect x="${fm(-w/2-4)}" y="${fm(-h/2-6)}" width="${fm(w+8)}" height="${fm(h+12)}" fill="#fff" fill-opacity="0"${v.id===st.sel?' stroke="#2a5bd7" stroke-width=".4" stroke-dasharray="2 1.5"':''}/>`+i;
+  body+=`<g data-v="${v.id}" transform="translate(${v.x} ${v.y})"${ui?' style="cursor:move"':''}>${i}</g>`;}
+ const tx=W-Mg-110,ty=H-Mg-30,t=(x,y,s2,fs)=>`<text x="${tx+x}" y="${ty+y}"${fs?` font-size="${fs}"`:''}>${esc(s2)}</text>`;
+ const ss=[...new Set(st.views.map(v=>v.s))],scl=ss.length===1?lbl(ss[0]):'theo từng hình';
+ const tb=`<g fill="none" stroke="#111" stroke-width=".35"><rect x="${tx}" y="${ty}" width="110" height="30"/><path d="M${tx} ${ty+10}h110M${tx} ${ty+20}h110M${tx+55} ${ty+10}v20"/></g><g fill="#111" font-size="3.4">${t(3,7,g('title')||'Bản vẽ',5)}${t(3,16.5,'Vật liệu: '+g('mat'))}${t(58,16.5,'Tỷ lệ '+scl+' · mm')}${t(3,26.5,'Vẽ: '+g('by')+' · '+g('date'))}${t(58,26.5,'Khổ '+g('sheet'))}</g>`;
+ return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}mm" height="${H}mm" font-family="Arial,Helvetica,sans-serif"><defs><marker id="ar" viewBox="0 0 10 10" refX="10" refY="5" markerUnits="userSpaceOnUse" markerWidth="3" markerHeight="3" orient="auto-start-reverse"><path d="M0 1L10 5L0 9z" fill="#111" stroke="none"/></marker></defs><rect width="${W}" height="${H}" fill="#fff"/><rect x="${Mg}" y="${Mg}" width="${W-2*Mg}" height="${H-2*Mg}" fill="none" stroke="#111" stroke-width=".7"/>${body}${tb}</svg>`;}
+function draw(){
+ if(!st.P0)return;$('paper').innerHTML=sheetSvg(true);$('angv').textContent=$('ang').value;$('lwv').textContent=$('lw').value;
+ const[W,H]=sz();let e=$('pgs');if(!e){e=document.createElement('style');e.id='pgs';document.head.appendChild(e);}
+ e.textContent=`@page{size:${W}mm ${H}mm;margin:0}@media print{#pvpaper svg{width:${W}mm;height:${H}mm}}`;}
+
+/* ---------- chỉnh sửa trên giấy ---------- */
+const paper=$('paper'),cur=()=>st.views.find(x=>x.id===st.sel);
+function pt(e){const s=paper.querySelector('svg'),p=s.createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform(s.getScreenCTM().inverse());}
+function snap(v,u,w){const Q=v.Q,tol=3/v.s;let bi=-1,bd=tol*tol;for(let i=0;i<Q.length;i+=2){const d=(Q[i]-u)**2+(Q[i+1]-w)**2;if(d<bd){bd=d;bi=i;}}return bi<0?[u,w]:[Q[bi],Q[bi+1]];}
+function dimClick(v,p){
+ const a=snap(v,(p.x-v.x)/v.s+v.um,-(p.y-v.y)/v.s+v.vm);st.sel=v.id;
+ if(!st.tmp||st.tmp.v!==v.id){st.tmp={v:v.id,a};msg('Đã chọn điểm 1 — bấm điểm thứ hai (cùng hình).');return;}
+ st.dims.push({id:st.nid++,v:v.id,a:st.tmp.a,b:a,k:$('dk').value,off:+$('doff').value||8});st.tmp=null;msg('Đã thêm số đo.');draw();panel();}
+paper.addEventListener('pointerdown',e=>{
+ const g=e.target.closest('[data-v]');if(!g)return;const v=st.views.find(x=>x.id===+g.dataset.v),p=pt(e);
+ if(st.mode==='dim'){dimClick(v,p);return;}
+ st.sel=v.id;draw();panel();paper.setPointerCapture(e.pointerId);
+ st.drag={v,g:paper.querySelector(`[data-v="${v.id}"]`),p,x:v.x,y:v.y};});
+paper.addEventListener('pointermove',e=>{const d=st.drag;if(!d)return;const p=pt(e);
+ d.v.x=Math.round((d.x+p.x-d.p.x)*2)/2;d.v.y=Math.round((d.y+p.y-d.p.y)*2)/2;d.g.setAttribute('transform',`translate(${d.v.x} ${d.v.y})`);});
+paper.addEventListener('pointerup',()=>{st.drag=null;});
+function panel(){
+ const v=cur();$('qf').style.display=v?'grid':'none';
+ $('qh').textContent=v?'Đang chỉnh: '+v.name:'Bấm vào một hình trên giấy để chỉnh sửa. Kéo hình để di chuyển.';
+ if(!v){$('qlist').innerHTML='';return;}
+ $('qn').value=v.name;$('qs').value=v.s;const nl=Math.hypot(...v.n);
+ $('qd').value=Object.keys(DIR).find(k=>{const d=DIR[k],dl=Math.hypot(...d);return d.every((a,i)=>Math.abs(a/dl-v.n[i]/nl)<1e-3);})||'';
+ const ds=st.dims.filter(m=>m.v===v.id);
+ $('qlist').innerHTML=ds.length?'Số đo: '+ds.map(m=>`<button class="alt" data-del="${m.id}">${{h:'Ngang',v:'Dọc',a:'Nghiêng'}[m.k]} ${fm(m.k==='h'?Math.abs(m.b[0]-m.a[0]):m.k==='v'?Math.abs(m.b[1]-m.a[1]):Math.hypot(m.b[0]-m.a[0],m.b[1]-m.a[1]))} ✕</button>`).join(''):'';}
+const clr=v=>{st.dims=st.dims.filter(m=>m.v!==v.id);st.tmp=null;};
+$('qn').oninput=e=>{const v=cur();if(v){v.name=e.target.value;draw();}};
+$('qd').onchange=e=>{const v=cur();if(v&&DIR[e.target.value]){v.n=DIR[e.target.value];clr(v);calc(v);draw();panel();}};
+$('qs').onchange=e=>{const v=cur();if(v){v.s=+e.target.value;calc(v);draw();}};
+$('qr').onclick=()=>{const v=cur();if(v){v.rot=(v.rot+1)%4;clr(v);calc(v);draw();panel();}};
+$('qx').onclick=()=>{const v=cur();if(v){clr(v);st.views=st.views.filter(x=>x!==v);st.sel=null;draw();panel();}};
+$('qlist').onclick=e=>{const b=e.target.closest('[data-del]');if(b){st.dims=st.dims.filter(m=>m.id!==+b.dataset.del);draw();panel();}};
+$('dm').onclick=()=>{st.mode=st.mode?null:'dim';st.tmp=null;$('dm').classList.toggle('alt',!st.mode);paper.style.cursor=st.mode?'crosshair':'';msg(st.mode?'Chế độ số đo: bấm hai đỉnh trên cùng một hình (tự bắt điểm gần nhất).':'');};
+$('arr').onclick=arrange;$('std').onclick=()=>{if(st.P0)addStd();};
+$('addface').onclick=()=>{if(!st.pickN)return;const v=mk(st.pickN,'Hình '+(st.views.length+1));
+ if(st.views.length===1)arrange();else{const[W,H]=sz();v.s=st.views[0].s;calc(v);v.x=W/2;v.y=H/2-10;draw();panel();}};
+['sheet'].forEach(i=>$(i).onchange=arrange);
+$('up').onchange=()=>{build3d();geom();draw();};$('ang').oninput=()=>{geom();draw();};
+['lw','title','mat','by','date'].forEach(i=>$(i).oninput=draw);
+
+/* ---------- xem trước, xuất ---------- */
+$('preview').onclick=()=>{if(!st.P0){msg('Hãy tải file hoặc bấm “Dùng mẫu” trước.');return;}
+ const[W,H]=sz();$('pvpaper').innerHTML=sheetSvg(false);$('pvinfo').textContent='Xem trước · Khổ '+$('sheet').value+' ngang ('+W+'×'+H+' mm)';$('pv').classList.add('show');};
+$('pvclose').onclick=()=>$('pv').classList.remove('show');
+$('pdf').onclick=()=>{try{window.print();}catch(e){alert('Trình duyệt chặn in trong khung này — hãy mở trang ở tab riêng rồi thử lại.');}};
+$('dl').onclick=()=>{if(!st.P0)return;try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([sheetSvg(false)],{type:'image/svg+xml'}));a.download=($('title').value||'banve')+'.svg';document.body.appendChild(a);a.click();a.remove();}catch(e){msg('Không tải được ở môi trường này.');}};
+
+/* ---------- 3D ---------- */
+let R=null;
+function init3d(){
+ const el=$('v3d'),sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,1,.1,1e5);cam.up.set(0,0,1);
+ const ren=new THREE.WebGLRenderer({antialias:true});ren.setPixelRatio(Math.min(window.devicePixelRatio||1,2));el.appendChild(ren.domElement);
+ const ctl=new THREE.OrbitControls(cam,ren.domElement);
+ sc.add(new THREE.AmbientLight(0xffffff,.6));
+ for(const p of[[1,-1,2,.7],[-1,1,-.6,.35]]){const d=new THREE.DirectionalLight(0xffffff,p[3]);d.position.set(p[0],p[1],p[2]);sc.add(d);}
+ R={sc,cam,ren,ctl,mesh:null,hl:null};
+ const rs=()=>{const w=el.clientWidth||300;ren.setSize(w,340);cam.aspect=w/340;cam.updateProjectionMatrix();};
+ new ResizeObserver(rs).observe(el);rs();
+ (function loop(){requestAnimationFrame(loop);ctl.update();ren.render(sc,cam);})();
+ const cv=ren.domElement;cv.addEventListener('pointerdown',e=>{R.dn=[e.clientX,e.clientY];});
+ cv.addEventListener('pointerup',e=>{
+  if(!R.dn||!R.mesh||Math.hypot(e.clientX-R.dn[0],e.clientY-R.dn[1])>4)return;
+  const rc=cv.getBoundingClientRect(),ray=new THREE.Raycaster();
+  ray.setFromCamera(new THREE.Vector2((e.clientX-rc.left)/rc.width*2-1,-(e.clientY-rc.top)/rc.height*2+1),cam);
+  const h=ray.intersectObject(R.mesh)[0];if(!h)return;
+  const n=h.face.normal.clone();if(n.dot(ray.ray.direction)>0)n.negate();pickFace(h.faceIndex,n);});}
+function build3d(){
+ if(!R||!st.T)return;
+ if(R.mesh){R.sc.remove(R.mesh);R.mesh.geometry.dispose();}
+ if(R.hl){R.sc.remove(R.hl);R.hl=null;}
+ const T=st.T,Y=$('up').value==='y',a=new Float32Array(T.length);
+ for(let i=0;i<T.length;i+=3){let x=T[i],y=T[i+1],z=T[i+2];if(Y){const t=y;y=-z;z=t;}a[i]=x;a[i+1]=y;a[i+2]=z;}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(a,3));g.computeVertexNormals();g.computeBoundingBox();g.computeBoundingSphere();
+ R.mesh=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:0xb8c4d6,roughness:.6,metalness:.1,side:THREE.DoubleSide}));R.sc.add(R.mesh);
+ const c=new THREE.Vector3();g.boundingBox.getCenter(c);const r=g.boundingSphere.radius;
+ R.ctl.target.copy(c);R.cam.position.set(c.x+r*1.8,c.y-r*2.4,c.z+r*1.6);R.cam.near=r/100;R.cam.far=r*100;R.cam.updateProjectionMatrix();R.ctl.update();}
+function pickFace(f,nrm){
+ const N=st.N,nf=N.length/3;
+ if(!st.adj){st.adj=Array.from({length:nf},()=>[]);for(const e of st.E)if(e[2].length===2){st.adj[e[2][0]].push(e[2][1]);st.adj[e[2][1]].push(e[2][0]);}}
+ const n0=[N[f*3],N[f*3+1],N[f*3+2]],seen=new Set([f]),q=[f];
+ while(q.length){const c=q.pop();for(const o of st.adj[c]){if(!seen.has(o)&&N[o*3]*n0[0]+N[o*3+1]*n0[1]+N[o*3+2]*n0[2]>.9995){seen.add(o);q.push(o);}}}
+ if(R.hl)R.sc.remove(R.hl);
+ const pos=R.mesh.geometry.attributes.position.array,r=R.mesh.geometry.boundingSphere.radius*.002,a=[];
+ for(const t of seen)for(let k=0;k<9;k+=3)a.push(pos[t*9+k]+nrm.x*r,pos[t*9+k+1]+nrm.y*r,pos[t*9+k+2]+nrm.z*r);
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(a,3));
+ R.hl=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:0xff7a1a,side:THREE.DoubleSide,transparent:true,opacity:.8}));R.sc.add(R.hl);
+ st.pickN=[nrm.x,nrm.y,nrm.z];$('pk').textContent='Đã chọn mặt (hướng '+st.pickN.map(fm).join(', ')+')';$('addface').disabled=false;}
+try{init3d();}catch(e){$('v3d').textContent='Không khởi tạo được khung 3D: '+e.message;}
+
+/* ---------- tải file ---------- */
 async function load(file){
  if(!file)return;const ext=file.name.split('.').pop().toLowerCase();msg('Đang đọc file…');
  try{let T;
@@ -162,18 +299,10 @@ const dz=$('drop');
 dz.ondragover=e=>{e.preventDefault();dz.classList.add('over');};
 dz.ondragleave=()=>dz.classList.remove('over');
 dz.ondrop=e=>{e.preventDefault();dz.classList.remove('over');load(e.dataTransfer.files[0]);};
-
 function box(x,y,z,w,d,h){const c=[[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]].map(p=>[x+p[0]*w,y+p[1]*d,z+p[2]*h]);
  const q=[[0,3,2,1],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]],o=[];
  for(const[a,b,c2,d2]of q)for(const i of[a,b,c2,a,c2,d2])o.push(...c[i]);return o;}
-function cyl(cx,cy,r,z0,z1,n){const o=[],pt=(i,z)=>[cx+r*Math.cos(2*Math.PI*i/n),cy+r*Math.sin(2*Math.PI*i/n),z];
- for(let i=0;i<n;i++){const a=pt(i,z0),b=pt(i+1,z0),c=pt(i+1,z1),d=pt(i,z1);o.push(...a,...b,...c,...a,...c,...d,cx,cy,z1,...c,...d,cx,cy,z0,...a,...b);}return o;}
+function cyl(cx,cy,r,z0,z1,n){const o=[],pt2=(i,z)=>[cx+r*Math.cos(2*Math.PI*i/n),cy+r*Math.sin(2*Math.PI*i/n),z];
+ for(let i=0;i<n;i++){const a=pt2(i,z0),b=pt2(i+1,z0),c=pt2(i+1,z1),d=pt2(i,z1);o.push(...a,...b,...c,...a,...c,...d,cx,cy,z1,...d,...c,cx,cy,z0,...b,...a);}return o;}
 $('demo').onclick=()=>setMesh(Float64Array.from([...box(0,0,0,80,50,10),...cyl(40,25,12,10,30,48)]),'mau.stl');
-
-document.querySelectorAll('.grid input,.grid select').forEach(el=>{el.addEventListener('input',render);el.addEventListener('change',render);});
-$('preview').onclick=()=>{if(!st.svg){msg('Hãy tải file hoặc bấm “Dùng mẫu” trước.');return;}$('pvpaper').innerHTML=st.svg;$('pvinfo').textContent='Xem trước · Khổ '+$('sheet').value+' ngang ('+st.W+'×'+st.H+' mm) · Tỷ lệ '+st.sc;$('pv').classList.add('show');};
-$('pvclose').onclick=()=>$('pv').classList.remove('show');
-$('pdf').onclick=()=>{try{window.print();}catch(e){alert('Trình duyệt chặn in trong khung này — hãy mở trang ở tab riêng rồi thử lại.');}};
-$('dl').onclick=()=>{if(!st.svg)return;try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([st.svg],{type:'image/svg+xml'}));a.download=($('title').value||'banve')+'.svg';document.body.appendChild(a);a.click();a.remove();}catch(e){msg('Không tải được ở môi trường này.');}};
-$('copy').onclick=async()=>{if(!st.svg)return;try{await navigator.clipboard.writeText(st.svg);msg('Đã sao chép SVG.');}catch(e){const r=$('raw');r.style.display='block';r.value=st.svg;r.select();msg('Hãy sao chép thủ công nội dung SVG bên dưới.');}};
 </script></body></html>
